@@ -50,17 +50,25 @@ def perform_ela_analysis(image_array):
         print(f"ELA error: {e}")
         return 50  # Neutral on error
 
-def check_metadata(image_array):
+def check_metadata(image_source):
     """
     Check EXIF metadata for editing indicators
     Returns score 0-100
     """
     try:
-        if len(image_array.shape) == 3:
-            pil_image = Image.fromarray(cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB))
+        # Handle different input types
+        if isinstance(image_source, np.ndarray):
+            # If numpy array, we can't get EXIF easily unless we have the original bytes
+            # This path is fallback and will likely return default score
+            if len(image_source.shape) == 3:
+                pil_image = Image.fromarray(cv2.cvtColor(image_source, cv2.COLOR_BGR2RGB))
+            else:
+                pil_image = Image.fromarray(image_source)
+        elif isinstance(image_source, Image.Image):
+            pil_image = image_source
         else:
-            pil_image = Image.fromarray(image_array)
-        
+            return 70
+
         exifdata = pil_image.getexif()
         if not exifdata:
             return 60  # No metadata - slightly suspicious
@@ -149,15 +157,15 @@ def analyze_quality(image):
         print(f"Quality analysis error: {e}")
         return 70
 
-def calculate_trust_score(image, issue_type):
+def calculate_trust_score(image_cv, image_pil, issue_type):
     """
     Main trust score calculation - explainable and dynamic
     """
     # Get individual scores
-    ela_score = perform_ela_analysis(image)
-    metadata_score = check_metadata(image)
-    shadow_score = analyze_shadows(image)
-    quality_score = analyze_quality(image)
+    ela_score = perform_ela_analysis(image_cv)
+    metadata_score = check_metadata(image_pil)
+    shadow_score = analyze_shadows(image_cv)
+    quality_score = analyze_quality(image_cv)
     
     # Weighted combination (explainable weights)
     trust_score = (
@@ -179,7 +187,7 @@ def calculate_trust_score(image, issue_type):
         "other": 1.0
     }
     
-    weight = issue_weights.get(issue_type, 1.0)
+    weight = issue_weights.get(issue_type.lower(), 1.0)
     trust_score = trust_score * weight
     
     # Clamp to 0-100
@@ -210,7 +218,7 @@ def calculate_severity_and_priority(trust_score, issue_type):
         "other": 40
     }
     
-    base_severity = severity_map.get(issue_type, 40)
+    base_severity = severity_map.get(issue_type.lower(), 40)
     
     # Adjust by trust score
     if trust_score < 40:
@@ -238,23 +246,53 @@ def analyze():
     Expects: Raw image bytes in POST body
     Returns: JSON with trust_score, base_severity, priority, explanation
     """
+    # #region agent log
+    import json; log_data = {"location": "app.py:234", "message": "Analyze endpoint entry", "data": {"hasData": len(request.data) > 0, "dataSize": len(request.data), "issueType": request.args.get("issue_type", "other")}, "timestamp": int(__import__("time").time() * 1000), "sessionId": "debug-session", "runId": "run1", "hypothesisId": "A"}; open(r"c:\Users\HP\Civic-Eye\.cursor\debug.log", "a").write(json.dumps(log_data) + "\n")
+    # #endregion
     try:
         # Get image from request
         data = np.frombuffer(request.data, np.uint8)
-        image = cv2.imdecode(data, cv2.IMREAD_COLOR)
+        # #region agent log
+        import json; log_data = {"location": "app.py:243", "message": "Image buffer created", "data": {"bufferSize": len(data)}, "timestamp": int(__import__("time").time() * 1000), "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D"}; open(r"c:\Users\HP\Civic-Eye\.cursor\debug.log", "a").write(json.dumps(log_data) + "\n")
+        # #endregion
+        image_cv = cv2.imdecode(data, cv2.IMREAD_COLOR)
         
-        if image is None:
+        # Create PIL image from raw bytes to preserve EXIF
+        try:
+            image_pil = Image.open(io.BytesIO(request.data))
+        except Exception as e:
+            print(f"PIL Image load error: {e}")
+            image_pil = None
+
+        # #region agent log
+        import json; log_data = {"location": "app.py:245", "message": "Image decoded", "data": {"imageIsNone": image_cv is None, "imageShape": image_cv.shape if image_cv is not None else None}, "timestamp": int(__import__("time").time() * 1000), "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D"}; open(r"c:\Users\HP\Civic-Eye\.cursor\debug.log", "a").write(json.dumps(log_data) + "\n")
+        # #endregion
+        
+        if image_cv is None:
             return jsonify({"error": "Invalid image data"}), 400
+            
+        if image_pil is None:
+            # Fallback if PIL failed but CV succeeded (unlikely but possible)
+            image_pil = Image.fromarray(cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB))
         
         # Get issue type from query param (optional, defaults to "other")
         issue_type = request.args.get("issue_type", "other")
+        # #region agent log
+        import json; log_data = {"location": "app.py:252", "message": "Before trust score calculation", "data": {"issueType": issue_type}, "timestamp": int(__import__("time").time() * 1000), "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D"}; open(r"c:\Users\HP\Civic-Eye\.cursor\debug.log", "a").write(json.dumps(log_data) + "\n")
+        # #endregion
         
         # Calculate trust score
-        trust_result = calculate_trust_score(image, issue_type)
+        trust_result = calculate_trust_score(image_cv, image_pil, issue_type)
         trust_score = trust_result["trust_score"]
+        # #region agent log
+        import json; log_data = {"location": "app.py:256", "message": "Trust score calculated", "data": {"trustScore": trust_score}, "timestamp": int(__import__("time").time() * 1000), "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D"}; open(r"c:\Users\HP\Civic-Eye\.cursor\debug.log", "a").write(json.dumps(log_data) + "\n")
+        # #endregion
         
         # Calculate severity and priority
         base_severity, priority = calculate_severity_and_priority(trust_score, issue_type)
+        # #region agent log
+        import json; log_data = {"location": "app.py:260", "message": "Severity and priority calculated", "data": {"baseSeverity": base_severity, "priority": priority}, "timestamp": int(__import__("time").time() * 1000), "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D"}; open(r"c:\Users\HP\Civic-Eye\.cursor\debug.log", "a").write(json.dumps(log_data) + "\n")
+        # #endregion
         
         return jsonify({
             "trust_score": trust_score,
@@ -264,6 +302,9 @@ def analyze():
         })
     
     except Exception as e:
+        # #region agent log
+        import json; log_data = {"location": "app.py:266", "message": "Exception in analyze", "data": {"errorMessage": str(e), "errorType": type(e).__name__}, "timestamp": int(__import__("time").time() * 1000), "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D"}; open(r"c:\Users\HP\Civic-Eye\.cursor\debug.log", "a").write(json.dumps(log_data) + "\n")
+        # #endregion
         print(f"Analysis error: {e}")
         return jsonify({"error": "Failed to analyze image"}), 500
 
