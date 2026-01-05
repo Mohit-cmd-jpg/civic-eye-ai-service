@@ -206,28 +206,31 @@ def calculate_trust_score(image_cv, image_pil, issue_type):
 
 def calculate_severity_and_priority(trust_score, issue_type):
     """
-    Calculate base severity and priority
+    Calculate base severity and priority with improved accuracy
     """
     severity_map = {
-        "fire": 95,
-        "accident": 90,
-        "road_block": 80,
-        "water_leak": 70,
-        "pothole": 60,
-        "garbage": 50,
-        "other": 40
+        "fire": 95,          # Critical
+        "accident": 90,      # Critical
+        "road_block": 85,    # High (Traffic impact)
+        "water_leak": 75,    # High (Resource loss)
+        "pothole": 65,       # Medium (Safety hazard)
+        "garbage": 55,       # Medium (Health hazard)
+        "other": 45          # Low
     }
     
-    base_severity = severity_map.get(issue_type.lower(), 40)
+    base_severity = severity_map.get(issue_type.lower(), 45)
     
-    # Adjust by trust score
-    if trust_score < 40:
-        base_severity = max(20, base_severity - 30)
+    # Adjust by trust score (Accuracy enhancement)
+    # If the image is likely fake (low trust), we lower the priority/severity
+    # to prevent spam/fake reports from cluttering high priority queues.
+    if trust_score < 30:
+        base_severity = base_severity * 0.5  # Significant penalty for very low trust
     elif trust_score < 60:
-        base_severity = max(30, base_severity - 15)
+        base_severity = base_severity * 0.8  # Moderate penalty
     elif trust_score < 80:
-        base_severity = max(40, base_severity - 5)
+        base_severity = base_severity * 0.95 # Slight penalty
     
+    # Cap severity
     base_severity = max(0, min(100, base_severity))
     
     if base_severity >= 85:
@@ -237,7 +240,7 @@ def calculate_severity_and_priority(trust_score, issue_type):
     else:
         priority = "LOW"
     
-    return base_severity, priority
+    return round(base_severity, 2), priority
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
