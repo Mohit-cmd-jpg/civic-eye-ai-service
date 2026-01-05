@@ -246,15 +246,10 @@ def analyze():
     Expects: Raw image bytes in POST body
     Returns: JSON with trust_score, base_severity, priority, explanation
     """
-    # #region agent log
-    import json; log_data = {"location": "app.py:234", "message": "Analyze endpoint entry", "data": {"hasData": len(request.data) > 0, "dataSize": len(request.data), "issueType": request.args.get("issue_type", "other")}, "timestamp": int(__import__("time").time() * 1000), "sessionId": "debug-session", "runId": "run1", "hypothesisId": "A"}; open(r"c:\Users\HP\Civic-Eye\.cursor\debug.log", "a").write(json.dumps(log_data) + "\n")
-    # #endregion
     try:
         # Get image from request
         data = np.frombuffer(request.data, np.uint8)
-        # #region agent log
-        import json; log_data = {"location": "app.py:243", "message": "Image buffer created", "data": {"bufferSize": len(data)}, "timestamp": int(__import__("time").time() * 1000), "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D"}; open(r"c:\Users\HP\Civic-Eye\.cursor\debug.log", "a").write(json.dumps(log_data) + "\n")
-        # #endregion
+
         image_cv = cv2.imdecode(data, cv2.IMREAD_COLOR)
         
         # Create PIL image from raw bytes to preserve EXIF
@@ -263,10 +258,6 @@ def analyze():
         except Exception as e:
             print(f"PIL Image load error: {e}")
             image_pil = None
-
-        # #region agent log
-        import json; log_data = {"location": "app.py:245", "message": "Image decoded", "data": {"imageIsNone": image_cv is None, "imageShape": image_cv.shape if image_cv is not None else None}, "timestamp": int(__import__("time").time() * 1000), "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D"}; open(r"c:\Users\HP\Civic-Eye\.cursor\debug.log", "a").write(json.dumps(log_data) + "\n")
-        # #endregion
         
         if image_cv is None:
             return jsonify({"error": "Invalid image data"}), 400
@@ -277,22 +268,13 @@ def analyze():
         
         # Get issue type from query param (optional, defaults to "other")
         issue_type = request.args.get("issue_type", "other")
-        # #region agent log
-        import json; log_data = {"location": "app.py:252", "message": "Before trust score calculation", "data": {"issueType": issue_type}, "timestamp": int(__import__("time").time() * 1000), "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D"}; open(r"c:\Users\HP\Civic-Eye\.cursor\debug.log", "a").write(json.dumps(log_data) + "\n")
-        # #endregion
         
         # Calculate trust score
         trust_result = calculate_trust_score(image_cv, image_pil, issue_type)
         trust_score = trust_result["trust_score"]
-        # #region agent log
-        import json; log_data = {"location": "app.py:256", "message": "Trust score calculated", "data": {"trustScore": trust_score}, "timestamp": int(__import__("time").time() * 1000), "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D"}; open(r"c:\Users\HP\Civic-Eye\.cursor\debug.log", "a").write(json.dumps(log_data) + "\n")
-        # #endregion
         
         # Calculate severity and priority
         base_severity, priority = calculate_severity_and_priority(trust_score, issue_type)
-        # #region agent log
-        import json; log_data = {"location": "app.py:260", "message": "Severity and priority calculated", "data": {"baseSeverity": base_severity, "priority": priority}, "timestamp": int(__import__("time").time() * 1000), "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D"}; open(r"c:\Users\HP\Civic-Eye\.cursor\debug.log", "a").write(json.dumps(log_data) + "\n")
-        # #endregion
         
         return jsonify({
             "trust_score": trust_score,
